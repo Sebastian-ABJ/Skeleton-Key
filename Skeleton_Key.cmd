@@ -96,13 +96,13 @@ REG ADD HKEY_LOCAL_MACHINE\temp\Setup /v CmdLine /t REG_SZ /f /d "cmd.exe /c C:\
 @echo Unloading System hive...
 REG UNLOAD HKEY_LOCAL_MACHINE\temp
 @echo	--------------------------------------------------------------------------
-@echo Microsoft Accounts found: %microsoftAccounts%
-@echo Be sure to disable their link inside Windows after removing passwords.
 @echo.
 @echo Completed. It is your responsibility to verify all actions have been completed successfully.
 @echo.
-@echo Restart the computer into the operating system to continue. A command prompt window should open
-@echo allowing you to reset user passwords before login.
+@echo Microsoft Accounts found: %microsoftAccounts%
+@echo Be sure to disable their link inside Windows after removing passwords.
+@echo.
+@echo Restart the computer into the operating system to continue.
 @echo.
 
 pause
