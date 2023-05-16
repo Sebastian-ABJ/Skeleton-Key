@@ -4,7 +4,7 @@ cls
 @echo	--------------------------------------------------------------------------
 @echo	--------------------------------------------------------------------------
 @echo	---        		      	Skeleton Key			       ---
-@echo	---          		        (Ver. 1.7.5)           	       	       ---
+@echo	---          		        (Ver. 1.8.1)           	       	       ---
 @echo	--------------------------------------------------------------------------
 @echo	--------------------------------------------------------------------------
 @echo	---   This software is licensed under the Mozilla Public License 2.0   ---
@@ -31,7 +31,9 @@ pause
 @echo.
 
 :Backdoor
-set /p targetVol=Specify the target Windows drive letter: 
+wmic logicaldisk get name,volumename,filesystem
+set /p targetVolInput=Specify the target Windows drive letter: 
+set targetVol=%targetVolInput:~0,1%
 CALL :UpCase targetVol
 set /p confirm=Confirm target Windows install is located on letter %targetVol%: (Y/N) 
 
@@ -143,6 +145,7 @@ REG UNLOAD HKEY_LOCAL_MACHINE\temp > nul
 @echo Microsoft Accounts found: %microsoftAccounts%
 if NOT %microsoftAccounts% == 0 (
 	@echo Remember to switch all affected accounts to local accounts.
+)
 @echo.
 if %sMode% == 1 (
 	@echo S-Mode was found and disabled - Turn off Secure Boot in BIOS to prevent boot looping.
