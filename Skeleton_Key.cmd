@@ -4,7 +4,7 @@ cls
 @echo	--------------------------------------------------------------------------
 @echo	--------------------------------------------------------------------------
 @echo	---        		      	Skeleton Key			       ---
-@echo	---          		        (Ver. 1.5.0)           	       	       ---
+@echo	---          		        (Ver. 1.7.5)           	       	       ---
 @echo	--------------------------------------------------------------------------
 @echo	--------------------------------------------------------------------------
 @echo	---   This software is licensed under the Mozilla Public License 2.0   ---
@@ -40,35 +40,40 @@ if NOT %confirm% == Y (
 	if NOT %confirm% == y goto Backdoor
 )
 
-@echo Copying password reset script to OS root directory...
-copy Skeleton_key.cmd %targetVol%:\Skeleton_Key.cmd
+@echo	--------------------------------------------------------------------------
+
+copy Skeleton_key.cmd %targetVol%:\Skeleton_Key.cmd > NUL
 if errorlevel 1 (
-	@echo Error copying file, exiting.
-	goto end
+	@echo Error copying script to target directory, exiting.
+	goto Error
+) else (
+	@echo Script copied to OS root directory.
 )
 @echo.
 
-@echo Finding SAM registry hive...
 %targetVol%:
-cd Windows\System32\config
-
-@echo Mounting SAM hive...
-REG LOAD HKEY_LOCAL_MACHINE\temp SAM
+cd \Windows\System32\config
 if errorlevel 1 (
-	@echo Error mounting hive. Cleaning up and exiting.
-	del /q %targetVol%:\Skeleton_Key.cmd
-	goto end
+	@echo Could not find registry hives, exiting.
+	goto Error
+) else (
+	@echo Registry hives found.
 )
 @echo.
+
+REG LOAD HKEY_LOCAL_MACHINE\temp SAM > NUL
+if errorlevel 1 (
+	@echo Error mounting SAM hive. Cleaning up and exiting.
+	del /q %targetVol%:\Skeleton_Key.cmd
+	goto Error
+)
 
 set microsoftAccounts= 0
 
-@echo Searching for Microsoft Accounts...
-for /f "tokens=*" %%k in ('reg query HKEY_LOCAL_MACHINE\temp\SAM\Domains\Account\Users') do (
-	REG QUERY %%k /V InternetUID > nul
+for /f "tokens=*" %%k in ('reg query HKEY_LOCAL_MACHINE\temp\SAM\Domains\Account\Users 2^>NUL') do (
+	REG QUERY %%k /V InternetUID 2> NUL
 	if errorlevel 1 (
-		@echo Account not connected to Microsoft Account
-		@echo.
+		@echo Microsoft Account not found.
 	) else (
 		set /a microsoftAccounts = microsoftAccounts + 1
 		@echo Microsoft Account detected! Severing link...
@@ -78,56 +83,72 @@ for /f "tokens=*" %%k in ('reg query HKEY_LOCAL_MACHINE\temp\SAM\Domains\Account
 		REG DELETE %%k\ /v InternetSID /f > nul
 		REG DELETE %%k\ /v InternetUID /f > nul
 		REG DELETE %%k\ /v InternetUserName /f > nul
-		@echo Microsoft Account link broken!
+		@echo Microsoft Account link broken.
 		@echo.
 	)
-)
-@echo	--------------------------------------------------------------------------
-@echo Microsoft Account removal process completed.
+) >NUL 2>&1
+@echo Microsoft Account connections removed.
 @echo.
 
-@echo Unloading SAM hive...
-REG UNLOAD HKEY_LOCAL_MACHINE\temp
-@echo.
+REG UNLOAD HKEY_LOCAL_MACHINE\temp > nul
 
-@echo Mounting System hive...
-REG LOAD HKEY_LOCAL_MACHINE\temp system
+REG LOAD HKEY_LOCAL_MACHINE\temp system > nul
 if errorlevel 1 (
-	@echo Error mounting hive. Cleaning up and exiting.
+	@echo Error mounting SYSTEM hive. Cleaning up and exiting.
 	del /q %targetVol%:\Skeleton_Key.cmd
-	goto end
+	goto Error
+)
+
+set sMode= 0
+REG QUERY HKEY_LOCAL_MACHINE\temp\ControlSet001\Control\CI\Policy /V SkuPolicyRequired > NUL
+if errorlevel 1 (
+	@echo Unable to find Registry Key for S-Mode
+) else (
+	REG QUERY HKEY_LOCAL_MACHINE\temp\ControlSet001\Control\CI\Policy /V SkuPolicyRequired | Find "0x0" > NUL
+	if errorlevel 1 (
+		@echo S-Mode enabled. Disabling...
+		set /a sMode = 1
+		REG ADD HKEY_LOCAL_MACHINE\temp\ControlSet001\Control\CI\Policy /v SkuPolicyRequired /t REG_DWORD /f /d 0 > NUL
+	) else (
+		@echo S-Mode not enabled.
+	)
 )
 @echo.
 
-@echo Enabling CMD to be run before login service...
-REG ADD HKEY_LOCAL_MACHINE\temp\Setup /v SetupType /t REG_DWORD /f /d 2
+REG ADD HKEY_LOCAL_MACHINE\temp\Setup /v SetupType /t REG_DWORD /f /d 2 > nul
 if errorlevel 1 (
 	@echo Error modifying registry. Cleaning up and exiting.
 	del /q %targetVol%:\Skeleton_Key.cmd
-	goto end
+	goto Error
+) else (
+	@echo Enabled CMD to run at startup.
 )
+@echo.
 
 
-@echo Injecting script to CMD entry...
-REG ADD HKEY_LOCAL_MACHINE\temp\Setup /v CmdLine /t REG_SZ /f /d "cmd.exe /c C:\Skeleton_Key.cmd 1"
+REG ADD HKEY_LOCAL_MACHINE\temp\Setup /v CmdLine /t REG_SZ /f /d "cmd.exe /c C:\Skeleton_Key.cmd 1" > nul
 if errorlevel 1 (
 	@echo Error modifying registry. Cleaning up and exiting.
 	REG ADD HKEY_LOCAL_MACHINE\SYSTEM\Setup /v SetupType /t REG_DWORD /f /d 0
 	del /q %targetVol%:\Skeleton_Key.cmd
-	goto end
+	goto Error
+) else (
+	@echo Injected script into startup.
 )
-@echo.
 
-@echo Unloading System hive...
-REG UNLOAD HKEY_LOCAL_MACHINE\temp
+REG UNLOAD HKEY_LOCAL_MACHINE\temp > nul
 @echo	--------------------------------------------------------------------------
-@echo.
-@echo Completed. It is your responsibility to verify all actions have been completed successfully.
+@echo Completed. Next steps:
 @echo.
 @echo Microsoft Accounts found: %microsoftAccounts%
-@echo Be sure to disable their link inside Windows after removing passwords.
+if NOT %microsoftAccounts% == 0 (
+	@echo Remember to switch all affected accounts to local accounts.
 @echo.
-@echo Restart the computer into the operating system to continue.
+if %sMode% == 1 (
+	@echo S-Mode was found and disabled - Turn off Secure Boot in BIOS to prevent boot looping.
+	@echo.
+)
+@echo Restart the computer into Windows to continue.
 @echo.
 
 pause
@@ -166,12 +187,14 @@ timeout /nobreak 1 > NUL
 
 @echo Removing CMD from startup...
 timeout /nobreak 1 > NUL
-REG ADD HKEY_LOCAL_MACHINE\SYSTEM\Setup /v SetupType /t REG_DWORD /f /d 0
+REG ADD HKEY_LOCAL_MACHINE\SYSTEM\Setup /v SetupType /t REG_DWORD /f /d 0 > NUL
+@echo Done.
 @echo.
 
 @echo Removing script from CMD...
 timeout /nobreak 1 > NUL
-REG ADD HKEY_LOCAL_MACHINE\SYSTEM\Setup /v CmdLine /t REG_SZ /f
+REG ADD HKEY_LOCAL_MACHINE\SYSTEM\Setup /v CmdLine /t REG_SZ /f > NUL
+@echo Done.
 
 :End
 @echo	--------------------------------------------------------------------------
@@ -189,6 +212,8 @@ call set %~1=%%%~1:%%~a%%
 )
 goto :eof
 
-:end
+:Error
 @echo -------------------------------------------------------------------------------
+REG UNLOAD HKEY_LOCAL_MACHINE\temp > nul
+del %targetVol%:\Skeleton_Key.cmd
 pause
