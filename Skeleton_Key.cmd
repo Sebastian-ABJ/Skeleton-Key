@@ -4,7 +4,7 @@ cls
 @echo	--------------------------------------------------------------------------
 @echo	--------------------------------------------------------------------------
 @echo	---        		      	Skeleton Key			       ---
-@echo	---          		        (Ver. 1.4.3)           	       	       ---
+@echo	---          		        (Ver. 1.5.0)           	       	       ---
 @echo	--------------------------------------------------------------------------
 @echo	--------------------------------------------------------------------------
 @echo	---   This software is licensed under the Mozilla Public License 2.0   ---
@@ -26,7 +26,7 @@ set appPath=%~dp0%Skeleton_Key.cmd
 @echo.
 @echo As a standard disclaimer, this tool modifies registry entries and as such,
 @echo should be used only as a last resort. If possible, it is recommended to
-@echo back up the registry before continuing or proceed at your own risk.
+@echo back up the registry before continuing and proceed at your own risk.
 pause
 @echo.
 
@@ -42,6 +42,10 @@ if NOT %confirm% == Y (
 
 @echo Copying password reset script to OS root directory...
 copy Skeleton_key.cmd %targetVol%:\Skeleton_Key.cmd
+if errorlevel 1 (
+	@echo Error copying file, exiting.
+	goto end
+)
 @echo.
 
 @echo Finding SAM registry hive...
@@ -50,25 +54,30 @@ cd Windows\System32\config
 
 @echo Mounting SAM hive...
 REG LOAD HKEY_LOCAL_MACHINE\temp SAM
+if errorlevel 1 (
+	@echo Error mounting hive. Cleaning up and exiting.
+	del /q %targetVol%:\Skeleton_Key.cmd
+	goto end
+)
 @echo.
 
 set microsoftAccounts= 0
 
 @echo Searching for Microsoft Accounts...
 for /f "tokens=*" %%k in ('reg query HKEY_LOCAL_MACHINE\temp\SAM\Domains\Account\Users') do (
-	REG QUERY %%k /V InternetUID >nul
+	REG QUERY %%k /V InternetUID > nul
 	if errorlevel 1 (
 		@echo Account not connected to Microsoft Account
 		@echo.
 	) else (
 		set /a microsoftAccounts = microsoftAccounts + 1
 		@echo Microsoft Account detected! Severing link...
-		REG DELETE %%k\ /v InternetProviderAttributes /f
-		REG DELETE %%k\ /v InternetProviderGUID /f
-		REG DELETE %%k\ /v InternetProviderName /f
-		REG DELETE %%k\ /v InternetSID /f
-		REG DELETE %%k\ /v InternetUID /f
-		REG DELETE %%k\ /v InternetUserName /f
+		REG DELETE %%k\ /v InternetProviderAttributes /f > nul
+		REG DELETE %%k\ /v InternetProviderGUID /f > nul
+		REG DELETE %%k\ /v InternetProviderName /f > nul
+		REG DELETE %%k\ /v InternetSID /f > nul
+		REG DELETE %%k\ /v InternetUID /f > nul
+		REG DELETE %%k\ /v InternetUserName /f > nul
 		@echo Microsoft Account link broken!
 		@echo.
 	)
@@ -83,14 +92,30 @@ REG UNLOAD HKEY_LOCAL_MACHINE\temp
 
 @echo Mounting System hive...
 REG LOAD HKEY_LOCAL_MACHINE\temp system
+if errorlevel 1 (
+	@echo Error mounting hive. Cleaning up and exiting.
+	del /q %targetVol%:\Skeleton_Key.cmd
+	goto end
+)
 @echo.
 
 @echo Enabling CMD to be run before login service...
 REG ADD HKEY_LOCAL_MACHINE\temp\Setup /v SetupType /t REG_DWORD /f /d 2
+if errorlevel 1 (
+	@echo Error modifying registry. Cleaning up and exiting.
+	del /q %targetVol%:\Skeleton_Key.cmd
+	goto end
+)
 
 
 @echo Injecting script to CMD entry...
 REG ADD HKEY_LOCAL_MACHINE\temp\Setup /v CmdLine /t REG_SZ /f /d "cmd.exe /c C:\Skeleton_Key.cmd 1"
+if errorlevel 1 (
+	@echo Error modifying registry. Cleaning up and exiting.
+	REG ADD HKEY_LOCAL_MACHINE\SYSTEM\Setup /v SetupType /t REG_DWORD /f /d 0
+	del /q %targetVol%:\Skeleton_Key.cmd
+	goto end
+)
 @echo.
 
 @echo Unloading System hive...
@@ -163,3 +188,7 @@ for %%a in ("a=A" "b=B" "c=C" "d=D" "e=E" "f=F" "g=G" "h=H" "i=I" "j=J" "k=K" "l
 call set %~1=%%%~1:%%~a%%
 )
 goto :eof
+
+:end
+@echo -------------------------------------------------------------------------------
+pause
